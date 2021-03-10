@@ -1,0 +1,345 @@
+<!-- Realizado por Ignacio Molina Casaus y Jesus J. Robles Jimenez-->
+<html>
+    <head>
+        <title>Juego de la Vida</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <style>
+            canvas {
+                margin: 0px;
+                padding: 0px;
+                border: 1px solid black;
+                background-color: lightgray;
+            }
+            
+            body {
+            background-repeat: repeat;
+            background-image: url("assets/fondo.jpg");
+            color: aliceblue;
+            font: bold 20px arial;
+            color: #FFFFFF;
+            margin-left: 500px;
+            }
+            
+            a {
+                color: aliceblue;
+            }
+            
+        </style>
+        
+
+
+        
+    </head>
+    
+    <body>
+        <!-- Botones para controlar el juego -->
+        <div>
+            Dimension del mundo: <input id="Dimension" value="40" type="number" />
+            <button id="BotonMundo" onclick= crearMundo()>Crear Nuevo Mundo</button>
+        </div>
+        
+            
+        <div>
+            <button id="BotonPlay" onclick= gestorPlay(1)>Reproducir</button>
+            <button id="BotonStop" onclick= gestorPlay(0)>Detener</button>
+            <button id="BotonStep" onclick= pasito()>Paso Manual</button>
+            <button id="BotonRandom" onclick= celulasAleatorias()>Celulas Aleatorias</button>
+        </div>
+        
+        <!-- Canvas del juego -->
+        <div>
+            <canvas id="canvas" width="500" height="500">Tu navegador no soporta canvas...</canvas>
+        </div>
+        
+        <!-- Estado de la simulación -->
+        <div>
+            <p id="simulacion">Simulación Pausada</p>
+            <p id="parrafo"></p>
+        </div>
+        
+        <div> <!-- Audio Player-->
+            <audio controls autoplay loop>
+                <source src="assets/music.mp3" type="audio/mp3" hidden="hidden">
+            </audio>
+        </div>
+        
+        <div>
+            <p>Realizado por Ignacio Molina Casaus y Jesus J. Robles Jimenez. 9/12/2019.</p>
+            <a HREF="https://www.youtube.com/watch?v=pgVyrWItI70">Musica</a>
+            <a HREF="https://mx.clipdealer.com/vector/media/A:74224056">Imagen de fondo</a>
+        </div>
+        
+        <script>
+            //definicion de variables
+            var ctx = document.getElementById("canvas").getContext("2d");
+            var canvas = document.getElementById("canvas");
+            var parrafo  = document.getElementById("parrafo");
+            
+            //inicializa el canvas con 40x40
+            var sqdimInit = canvas.width / 40;
+            var x = 0;
+            var y = 0;
+            for(var i = 0; i<40; i++){
+                x = 0;
+                for(var j = 0; j<40; j++){
+                    ctx.strokeRect(x, y, sqdimInit, sqdimInit);
+                    x += sqdimInit;
+                }
+                y+=sqdimInit;
+            }
+            
+                        
+            var mundoFijo; //mundo activo
+            var boolPlay; //verdadera cuando el juego se reproduce
+            
+            //Se define el contador de pasos y como se muestra por pantalla.
+            var contador = setInterval(temporizador,10);
+            document.getElementById("simulacion").innerHTML = "Simulación en marcha. Paso: " + contador;
+            
+            
+            
+            //clase celula
+            class Celula {
+                constructor(estado=false, tVida=0){
+                    this.estado = estado; //si esta viva o muerta
+                    this.tVida = tVida; //numero de pasos viva
+                }
+                
+                //cambia el estado de la celula
+                cambiarEstado (){
+                    if(this.estado === false){
+                        this.estado = true;
+                    }
+                    else{
+                        this.estado = false;
+                    }
+                }
+              
+            }
+                
+            
+            //clase mundo
+            class Mundo { 
+                constructor(dim, matrix){
+                    this.dim = dim;
+                    this.matrix = matrix;   
+                    this.sqdim = canvas.width / this.dim;
+                }
+                
+                //muestra en el canvas la cuadricula del mundo
+                dibujarMundo(){
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    
+                    var x = 0;
+                    var y = 0;
+                    for(var i = 0; i<this.dim; i++){
+                        x = 0;
+                        for(var j = 0; j<this.dim; j++){
+                            if(this.matrix[i][j].estado===true){
+                                ctx.fillRect(x, y, this.sqdim, this.sqdim);
+                                x += this.sqdim; 
+                            }else{
+                                ctx.strokeRect(x, y, this.sqdim, this.sqdim);
+                                x += this.sqdim;   
+                            }
+
+                        }
+                        y+=this.sqdim;
+                    }
+                }
+                
+                //anyade o quita celulas de un cuadro determinado
+                modificarMundo(x, y){
+                    this.matrix[x][y].cambiarEstado();
+                    ctx.clearRect(y*this.sqdim, x*this.sqdim, this.sqdim, this.sqdim);
+                    if(this.matrix[x][y].estado===true){
+                        ctx.fillRect(y*this.sqdim, x*this.sqdim, this.sqdim, this.sqdim);
+                    }else{
+                        ctx.strokeRect(y*this.sqdim, x*this.sqdim, this.sqdim, this.sqdim); 
+                    }
+                }
+                
+                //llama a modificarMundo al clicar en un cuadro concreto y actualiza la informacion de esta
+                modCelulas(canvas, event) { 
+                var cuadro = canvas.getBoundingClientRect();
+                var y = parseInt((event.clientX - cuadro.left) / this.sqdim); 
+                var x = parseInt((event.clientY - cuadro.top) / this.sqdim); 
+                
+                this.modificarMundo(x, y);
+                parrafo.innerHTML = "La célula " + "(" + x + ", " + y + ") lleva viva " + this.matrix[x][y].tVida + " pasos.";
+                }
+                
+                //muestra la informacion de la celula sobre la que se encuentra el raton (posicion y pasos viva)
+                infoCelulas(canvas, event) { 
+                var cuadro = canvas.getBoundingClientRect();
+                var sqdim = canvas.width / document.getElementById("Dimension").value ;
+                var y = parseInt((event.clientX - cuadro.left) / this.sqdim); 
+                var x = parseInt((event.clientY - cuadro.top) / this.sqdim); 
+
+
+                parrafo.innerHTML = "La célula " + "(" + x + ", " + y + ") lleva viva " + this.matrix[x][y].tVida + " pasos.";               
+                }
+                
+                //devuelve el numero de vecinos de una celula concreta
+                numeroVecinos(x, y){
+                    var vecinos = 0;
+
+                    
+                    //Comprobar y sumar vecinos
+                    if(x>0){
+                        if(this.matrix[x-1][y].estado === true){vecinos++;}
+                        if(this.matrix[x-1][(y+1)%this.dim].estado === true){vecinos++;}
+                        if(y>0){
+                            if(this.matrix[x-1][y-1].estado === true){vecinos++;}
+                        } else{
+                            if(this.matrix[x-1][this.dim-1].estado === true){vecinos++;}
+                        }      
+                    } else{
+                        if(this.matrix[this.dim-1][y].estado === true){vecinos++;}
+                        if(this.matrix[this.dim-1][(y+1)%this.dim].estado === true){vecinos++;}
+                        if(y>0){
+                            if(this.matrix[this.dim-1][y-1].estado === true){vecinos++;}
+                        } else{
+                            if(this.matrix[this.dim-1][this.dim-1].estado === true){vecinos++;}
+                        }    
+                    }
+                    
+                    if(y>0){
+                        if(this.matrix[x][y-1].estado === true){vecinos++;}
+                        if(this.matrix[(x+1)%this.dim][y-1].estado === true){vecinos++;}
+                    } else{
+                        if(this.matrix[x][this.dim-1].estado === true){vecinos++;}
+                        if(this.matrix[(x+1)%this.dim][this.dim-1].estado === true){vecinos++;}
+                    }
+                    
+                    if(this.matrix[x][(y+1)%this.dim].estado === true){vecinos++;}
+                    if(this.matrix[(x+1)%this.dim][y].estado === true){vecinos++;}
+                    if(this.matrix[(x+1)%this.dim][(y+1)%this.dim].estado === true){vecinos++;}
+                    
+
+                    return vecinos;               
+                }
+                
+                //actualiza la informacion del mundo tras un paso y lo dibuja en su nuevo estado
+                pasoNuevo(){
+                    var aux = new Array(this.dim);
+                    for(var i = 0; i<this.dim; i++){
+                        aux[i] = new Array(this.dim);
+                    }
+                    
+                    for(var i = 0; i<this.dim; i++){
+                        for(var j = 0; j<this.dim; j++){
+                            aux[i][j] = new Celula(this.matrix[i][j].estado);
+                            
+                            if((this.numeroVecinos(i, j) !== 2 && this.numeroVecinos(i, j) !== 3) && this.matrix[i][j].estado === true){
+                                aux[i][j].cambiarEstado();                               
+                            }
+                            
+                            if(this.numeroVecinos(i, j) === 3 && this.matrix[i][j].estado === false){
+                                 aux[i][j].cambiarEstado();
+                            }
+                        }
+                    }
+                    
+                    for(var i = 0; i<this.dim; i++){
+                        for(var j = 0; j< this.dim; j++){
+                            this.matrix[i][j].estado = aux[i][j].estado;
+                            if(this.matrix[i][j].estado === true){
+                                this.matrix[i][j].tVida++;    
+                            } else{
+                                this.matrix[i][j].tVida=0;
+                            }
+
+                        }
+                    }
+                    contador++;
+                    this.dibujarMundo();
+                }
+                
+                //genera de forma aleatoria celulas en el mundo
+                generarAleatorio(){
+                    for(var i = 0; i<this.dim; i++){
+                        for(var j = 0; j<this.dim; j++){
+                            if(parseInt(Math.random()*2)%2 ===0){
+                                this.matrix[i][j]= new Celula(true, 0);
+                            } else{
+                                this.matrix[i][j] = new Celula(false, 0);
+                            }
+                        }
+                    }
+                    this.dibujarMundo();
+                }
+            }
+            
+            //crea el mundo sobre el que se va a trabajar
+            function crearMundo(){
+                var tam = document.getElementById("Dimension").value;
+                contador = 0;
+                boolPlay = false;
+                
+                var matrix = new Array(tam);
+                for(var i = 0; i < tam; i++){
+                    matrix[i] = new Array(tam);
+                }
+                
+                for(var i = 0; i<tam; i++){
+                        for(var j = 0; j<tam; j++){
+                            matrix [i][j] = new Celula();
+                        }
+                    }  
+                mundoFijo = new Mundo(tam, matrix);
+                mundoFijo.dibujarMundo();
+
+            }
+            
+            crearMundo();
+            
+            //gestiona boolPlay segun el boton pulsado 
+            function gestorPlay(boton){
+                if(boton === 1){
+                    boolPlay = true;
+                } else{
+                    boolPlay = false;
+                }
+            }
+
+            //events listeners correspondientes para el canvas
+            canvas.addEventListener("mousedown", function(e) 
+            { 
+                mundoFijo.modCelulas(canvas, e); 
+            });
+            
+            
+            canvas.addEventListener("mousemove", function(e) 
+            { 
+                mundoFijo.infoCelulas(canvas, e); 
+            });
+            
+            //ejecuta un paso manual al pulsarse el boton
+            function pasito(){
+                mundoFijo.pasoNuevo();
+            }
+            
+            //funcion que llama a generarAleatorio tras pulsar el boton
+            function celulasAleatorias(){
+                mundoFijo.generarAleatorio();
+            }
+            
+            //funcion del temporizador 
+            function temporizador(){
+                if(boolPlay === true){
+                    mundoFijo.pasoNuevo();
+                    document.getElementById("simulacion").innerHTML = "Simulación en marcha. Paso: " + contador;
+                } else{
+                    document.getElementById("simulacion").innerHTML = "Simulación Pausada. Paso: " + contador;
+                }
+
+            }
+    
+        </script>
+       
+    </body>
+</html>
